@@ -53,6 +53,8 @@ jobs:
           git diff-index --quiet HEAD || git commit -m "chore: sanitized public synchronization"
 
           # 3. Always push — the workflow trigger guarantees new content exists
-          echo "Pushing to GitHub (${TARGET_REPO})..."
-          git push --force "https://x-access-token:${GH_TOKEN}@${TARGET_REPO}" HEAD:refs/heads/$DEST_BRANCH
+          for branch in $DEST_BRANCH; do
+            echo "Pushing to GitHub ${TARGET_REPO} → ${branch}..."
+            git push --force "https://x-access-token:${GH_TOKEN}@${TARGET_REPO}" HEAD:refs/heads/${branch}
+          done
           echo "Done."
