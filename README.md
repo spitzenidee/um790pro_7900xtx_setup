@@ -4,13 +4,15 @@
 
 # AMD RX 7900 XTX eGPU via OcuLink on Minisforum UM790 Pro + Proxmox VE
 
-A complete guide for connecting a Minisforum DEG1 eGPU dock with an AMD Radeon
-RX 7900 XTX to a Minisforum UM790 Pro mini PC running Proxmox VE, and passing
-the GPU through to a Linux virtual machine for AI/compute workloads.
+A complete guide for connecting a Minisforum DEG1 eGPU dock with an AMD Radeon RX 7900 XTX to a Minisforum UM790 Pro mini PC running Proxmox VE, and passing the GPU through to a Linux virtual machine for AI/compute workloads.
+
+It should be clear that I can only vouch for the hardware listed and described here, as it's the exact one I bought and set up and found to be working.
 
 ---
 
 ## Hardware Used
+
+"Hardware used" shall be read as "hardware validated to work" - this includes the config of a Proxmox host (community edition, in my case), PCIe-Passthrough from the host to a VM and setup of a genAI stack inside the VM.
 
 ### Host Computer
 - **Minisforum UM790 Pro** mini PC
@@ -32,15 +34,17 @@ via an M.2 adapter card installed inside the machine in the U93 slot.
 - Installed in the **U93 M.2 slot** inside the UM790 Pro
 - Converts the PCIe x4 M.2 slot into an external SFF-8611 OcuLink port
 - Connected to the DEG1 dock via the included OcuLink SFF-8611 cable
+- Choice supported and triggered be a post found on Reddit (see "References")
 
 ### eGPU Dock
-- **Minisforum DEG1** (OcuLink 4i variant, Amazon ASIN: B0DHGSG9PZ)
+- **Minisforum DEG1** (OcuLink 4i variant)
 - Connects to the host via an **OcuLink SFF-8611 4i cable** (PCIe 4.0 x4, up
-  to 64 Gbps, cable distributed by Minisforum with the DEG1 by default)
+  to 64 Gbps, cable used is the one distributed by Minisforum with the DEG1 by default)
 - Accepts a standard PCIe x16 graphics card and an ATX or SFX power supply
 - Has a **ForcePowerOn button with LED** and **three hidden DIP switches**
   under the bottom backplate (see critical section below)
 - Does **not** include a power supply — you must provide one separately
+- Choice supported and triggered be a post found on Reddit (see "References")
 
 ### External GPU
 - **AMD Radeon RX 7900 XTX**, 24 GB GDDR6
@@ -48,7 +52,7 @@ via an M.2 adapter card installed inside the machine in the U93 slot.
   OcuLink uplink to a full x16 slot connection on the card itself
 
 ### PSU
-- TODO: Any ATX or SFX power supply sufficient for the RX 7900 XTX (500 W+ recommended)
+- be quiet! Pure Power 11 700W (80+ Gold)
 
 ---
 
@@ -81,7 +85,7 @@ small performance penalty compared to a native x16 slot.
 
 ## PCI Device IDs (What the Numbers Mean)
 
-After successful boot, these devices appear in `lspci`:
+After successful boot, these devices appear in `lspci` (note: yours may vary, so take care to check and validate):
 
 | PCI Address | Device ID | What it is | Location |
 |---|---|---|---|
@@ -103,14 +107,14 @@ console/management access.
 
 ---
 
-## The Critical Problem: DEG1 Hidden DIP Switches
+## A (Potential) Critical Problem: DEG1 Hidden DIP Switches
 
 The Minisforum DEG1 dock has **three undocumented DIP switches** hidden under
 the bottom backplate (requires removing screws to access). These switches are
 **not mentioned in the product manual** and were discovered by users opening
 the dock.
 
-> ⚠️ **Warning:** The switches are fragile. The original discoverer broke one
+> ⚠️ **Warning:** The switches may be fragile (as reported by some users on ServeTheHome forum). The original discoverer broke one
 > trying to flip it. Use a fine-tipped tool and apply minimal force.
 
 The switches control signaling behaviour of the dock's PCIe redriver chip
@@ -153,13 +157,11 @@ The switches control signaling behaviour of the dock's PCIe redriver chip
 | `FLLOW START` | **ON** | Changed from factory OFF |
 | `TGX` | **OFF** | Changed from factory ON |
 
-This combination was found by trial and error. The factory defaults (`FLLOW START=OFF`, `TGX=ON`) are optimised for native Minisforum OcuLink ports on
-newer Minisforum machines. For a generic M.2 adapter on a UM790 Pro, both
-switches need to be changed.
+This combination was found by trial and error. The factory defaults (`FLLOW START=ON`, `TGX=ON`) are (potentially) optimised for native Minisforum OcuLink ports on newer Minisforum machines. For a generic M.2 adapter on a UM790 Pro, both switches need to be changed. I have no real clue on the meaning and effect of the TGX switch, but switching it to `OFF` in the end did the trick.
 
 **Symptom of wrong switch config:** The PCIe bridge for the U93 slot
 (`00:02.5` / `00:02.6`) does not appear in `lspci` at all. The BIOS reports
-U93 as `Available` in DMI instead of `In Use`. The GPU fans do not spin up
+U93 as `Available` in DMI instead of `In Use`. The GPU fans **do not spin up at all*
 when the DEG1 power button is pressed (no PCIe presence signal reaches the
 host).
 
@@ -207,11 +209,12 @@ Verify these are in `/etc/default/grub` on the
 `GRUB_CMDLINE_LINUX_DEFAULT` line:
 
 ```
-amd_iommu=on   ← enables AMD's IOMMU (required for PCIe passthrough)
-iommu=pt       ← passthrough mode (better performance, less overhead)
+amd_iommu=on    ← enables AMD's IOMMU (required for PCIe passthrough)
+iommu=pt        ← passthrough mode (better performance, less overhead)
+pcie_aspm=force ← apparently this **can** cause stability problems, but I found none.
 ```
 
-Apply with `update-grub` if changed, then reboot.
+Apply with `update-grub` if changed, then reboot. For the `pcie_aspm=force` switch: I found it to neither trigger stability issues, but also no power saving at all in comparison to not having this in the GRUB commandline.
 
 ### Step 2: VFIO Module Configuration
 
