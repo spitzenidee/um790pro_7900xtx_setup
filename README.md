@@ -1,25 +1,19 @@
-# um790pro_7900xtx_setup
-
-(hopefully) Exhaustive description and docs to setup a Radeon RX 7900 XTX 24G eGPU with a Minisforum UM790 Pro, via Minisforum DEG1 Oculink dock
-
 # AMD RX 7900 XTX eGPU via OcuLink on Minisforum UM790 Pro + Proxmox VE
 
 A complete guide for connecting a Minisforum DEG1 eGPU dock with an AMD Radeon RX 7900 XTX to a Minisforum UM790 Pro mini PC running Proxmox VE, and passing the GPU through to a Linux virtual machine for AI/compute workloads.
 
-It should be clear that I can only vouch for the hardware listed and described here, as it's the exact one I bought and set up and found to be working.
+All hardware and configuration described here has been personally validated — this is the exact setup that was purchased and confirmed working.
 
 ---
 
 ## Hardware Used
-
-"Hardware used" shall be read as "hardware validated to work" - this includes the config of a Proxmox host (community edition, in my case), PCIe-Passthrough from the host to a VM and setup of a genAI stack inside the VM.
 
 ### Host Computer
 - **Minisforum UM790 Pro** mini PC
 - **CPU:** AMD Ryzen 9 7940HS (8 cores / 16 threads, Zen 4 "Phoenix")
 - **RAM:** 64 GB DDR5-5600
 - **Internal SSD:** Kingston 1 TB NVMe (in M.2 slot J91)
-- **OS:** Proxmox VE 9.1.6 on Debian 13 (trixie), kernel 6.17.13-2-pve
+- **OS:** Proxmox VE 9.1.6 on Debian 13 (trixie), kernel 7.0.2-2-pve
 - **BIOS:** AMI 1.09 (November 2023) — no newer version available
 
 The UM790 Pro has **two internal M.2 slots**:
@@ -34,7 +28,7 @@ via an M.2 adapter card installed inside the machine in the U93 slot.
 - Installed in the **U93 M.2 slot** inside the UM790 Pro
 - Converts the PCIe x4 M.2 slot into an external SFF-8611 OcuLink port
 - Connected to the DEG1 dock via the included OcuLink SFF-8611 cable
-- Choice supported and triggered be a post found on Reddit (see "References")
+- Choice supported and triggered by a post found on Reddit (see "References")
 
 ### eGPU Dock
 - **Minisforum DEG1** (OcuLink 4i variant)
@@ -44,7 +38,7 @@ via an M.2 adapter card installed inside the machine in the U93 slot.
 - Has a **ForcePowerOn button with LED** and **three hidden DIP switches**
   under the bottom backplate (see critical section below)
 - Does **not** include a power supply — you must provide one separately
-- Choice supported and triggered be a post found on Reddit (see "References")
+- Choice supported and triggered by a post found on Reddit (see "References")
 
 ### External GPU
 - **AMD Radeon RX 7900 XTX**, 24 GB GDDR6
@@ -75,11 +69,7 @@ UM790 Pro (U93 M.2 slot)
   (internal PCIe switch on card negotiates x16 to x4)
 ```
 
-The bandwidth limitation is the OcuLink cable: PCIe 4.0 x4 = ~64 Gbps. The
-GPU card itself has an internal PCIe switch that bridges this to a full x16
-slot, but the actual data throughput is still capped at x4. For GPU compute
-workloads (AI inference, rendering) this is negligible. For gaming there is a
-small performance penalty compared to a native x16 slot.
+The bandwidth cap is PCIe 4.0 x4 (~64 Gbps). For GPU compute workloads this is negligible; for gaming there is a small penalty vs. a native x16 slot.
 
 ---
 
@@ -97,10 +87,6 @@ After successful boot, these devices appear in `lspci` (note: yours may vary, so
 | `05:00.0` | `2646:501b` | Kingston NVMe SSD | Internal — M.2 slot J91 |
 | `c6:00.0` | `1002:15bf` | AMD Radeon 780M **iGPU** (Phoenix1) | Internal — inside the CPU |
 
-The PCIe switch inside the GPU (`1002:1478` / `1002:1479`) is a normal part of
-the RX 7900 XTX card design. It acts as a bridge that allows the card to
-present itself as x16 even when connected via x4 OcuLink.
-
 The **iGPU** (`1002:15bf`) is the graphics processor built into the Ryzen CPU.
 It is **not** passed through to the VM — it stays with the Proxmox host for
 console/management access.
@@ -114,7 +100,7 @@ the bottom backplate (requires removing screws to access). These switches are
 **not mentioned in the product manual** and were discovered by users opening
 the dock.
 
-> ⚠️ **Warning:** The switches may be fragile (as reported by some users on ServeTheHome forum). The original discoverer broke one
+> **Warning:** The switches may be fragile (as reported by some users on ServeTheHome forum). The original discoverer broke one
 > trying to flip it. Use a fine-tipped tool and apply minimal force.
 
 The switches control signaling behaviour of the dock's PCIe redriver chip
@@ -139,6 +125,17 @@ The switches control signaling behaviour of the dock's PCIe redriver chip
   - `ON` — enables follow-power compatibility with generic M.2-to-OcuLink
     adapters. **Required for the UM790 Pro + RIITOP adapter setup.**
 
+  **Follow function behavior (FLLOW START=ON):** The dock maintains a "follow"
+  state internally. Once the DEG1 has been manually activated by pressing its
+  power button, it enters this follow state and will automatically power on and
+  off in sync with subsequent UM790 power cycles — no further manual button
+  presses are needed for host reboots. However, the follow state is **not
+  retained across a DEG1 power cycle**: if the DEG1 PSU is switched off (or
+  the dock loses power for any reason), the follow state is lost. The button
+  must be pressed manually once after the next DEG1 power-on to re-establish
+  it. There is currently no known switch configuration that preserves the
+  follow state across a full DEG1 power cycle.
+
 ### Switch 3: `TGX`
 - **Positions:** ON / OFF
 - **Factory default:** ON
@@ -157,7 +154,19 @@ The switches control signaling behaviour of the dock's PCIe redriver chip
 | `FLLOW START` | **ON** | Changed from factory OFF |
 | `TGX` | **OFF** | Changed from factory ON |
 
-This combination was found by trial and error. The factory defaults (`FLLOW START=ON`, `TGX=ON`) are (potentially) optimised for native Minisforum OcuLink ports on newer Minisforum machines. For a generic M.2 adapter on a UM790 Pro, both switches need to be changed. I have no real clue on the meaning and effect of the TGX switch, but switching it to `OFF` in the end did the trick.
+This combination was found by trial and error. The factory defaults (`FLLOW START=ON`, `TGX=ON`) are (potentially) optimised for native Minisforum OcuLink ports on newer Minisforum machines. For a generic M.2 adapter on a UM790 Pro, both switches need to be changed. The exact signaling difference introduced by `TGX` is undocumented; empirically, `OFF` is required for non-Lenovo hosts.
+
+### Tested Non-Working Configurations
+
+The following switch combinations were explicitly tested and confirmed not
+working for the UM790 Pro + RIITOP adapter. In both cases the DEG1 did not
+power on automatically after a full power cycle of both the DEG1 and UM790,
+**and** did not follow when only the UM790 was power-cycled.
+
+| `DEBUG` | `FLLOW START` | `TGX` | Result |
+|---|---|---|---|
+| A | **OFF** | OFF | No auto power-on; no follow on UM790-only reboot |
+| B | **OFF** | OFF | Same — no auto power-on; no follow on UM790-only reboot |
 
 **Symptom of wrong switch config:** The PCIe bridge for the U93 slot
 (`00:02.5` / `00:02.6`) does not appear in `lspci` at all. The BIOS reports
@@ -179,7 +188,11 @@ self-test at startup). If the GPU is not present during POST, the BIOS will not
 allocate PCIe resources for it and it will never appear, even if powered on
 later.
 
-**Every boot must follow this order:**
+### Cold Start (after DEG1 has been power-cycled)
+
+This procedure is required whenever the DEG1 PSU has been switched off — the
+dock loses its follow state on power loss and the button must be pressed
+manually to re-establish it.
 
 1. Ensure the host (UM790 Pro) is fully **powered off**
 2. Ensure the OcuLink cable is connected at both ends (click to lock at both
@@ -189,6 +202,27 @@ later.
    (normal, the GPU has no driver yet to control them)
 5. Wait approximately **10–30 seconds** for the fans to settle
 6. Power on the **UM790 Pro**
+
+Once the UM790 has booted successfully, the DEG1 is in follow state for all
+subsequent UM790 power cycles (see below).
+
+### UM790 Reboot Without DEG1 Power Cycle
+
+If the DEG1 PSU remains on between host reboots (only the UM790 is
+power-cycled), the follow state is active and no manual button press is
+needed. The boot sequence simplifies to:
+
+1. Shut down the UM790 Pro (Proxmox host)
+2. Power on the UM790 Pro
+
+The DEG1 follows automatically. The GPU fans spin up in three brief bursts
+during the boot sequence:
+- **~2–4 s after power-on:** PCIe link training (hardware handshake)
+- **~10 s:** Proxmox kernel initialisation
+- **~20 s:** VM start (QEMU/VFIO device handoff)
+
+> If the DEG1 is power-cycled for any reason (PSU off, power outage, etc.),
+> the follow state is lost and the cold start procedure above must be used.
 
 To power off: shut down the host OS first, then power off the DEG1.
 
@@ -292,6 +326,8 @@ changes take no effect until the next Proxmox package update.
 
 ### Step 5: VM Configuration
 
+Create the VM via the Proxmox web UI or `qm create` before applying the settings below. The passthrough-relevant lines in the VM config are:
+
 **File: `/etc/pve/qemu-server/103.conf`** (relevant lines)
 
 ```
@@ -330,17 +366,53 @@ hostpci1: 0000:03:00.1                  # RX 7900 XTX Audio (mandatory — see n
 - `machine: q35` — the Q35 chipset emulates a PCIe bus inside the VM, which
   is required for `hostpci` passthrough to work correctly.
 
-### Step 6: Post-Stop Hook Script
+### Step 6: Hook Script (CPU Pinning + GPU Power Management)
 
-When the guest shuts down, the RX 7900 XTX GPU puts its HDMI/DP audio
-companion (`03:00.1`) into D3hot as part of normal GPU power management. If
-QEMU exits while `03:00.1` is in D3hot, the next `qm start` will hand the GPU
-to the guest while it is still in D3, and the guest will fail to enumerate it
-(the GPU will be invisible inside the VM).
+The hook script at `/var/lib/vz/snippets/cpu-pinning.pl` handles three things:
 
-The Proxmox hook script handles this by running a `post-stop` phase that
-detects the stuck D3hot state and forces a PCIe remove + rescan to return the
-device to D0 before the next start.
+- **`pre-start`** — Verifies the GPU is present before QEMU starts. If the GPU
+  is in D3hot (runtime PM suspend), wakes it before handing it to the VM.
+  Fails the VM start with a clear error if the GPU is absent (e.g. DEG1
+  powered off).
+- **`post-start`** — Pins the QEMU process to CPU cores 1–7 via `taskset`,
+  dedicating those cores to the VM.
+- **`post-stop`** — After the VM exits, Proxmox leaves the GPU bound to
+  `vfio-pci`. The hook rebinds it to its native drivers (`amdgpu` for the GPU,
+  `snd_hda_intel` for the audio), then enables amdgpu runtime PM so the GPU
+  enters D3hot after 2 seconds of inactivity (see power figures below).
+
+#### Why D3hot rather than removing PCIe devices?
+
+Without any driver, the GPU VBIOS runs at its default power state: ~55 W.
+Removing PCIe devices from the kernel leaves the GPU in that state. amdgpu
+in D3hot is the only mechanism that actually powers down the GPU silicon
+while keeping the PCIe link alive.
+
+#### Cutting ATX PSU power safely (e.g. before going on vacation)
+
+The OcuLink link requires BIOS-level initialization to train at full speed.
+If the ATX PSU is switched off while the host is running, the kernel has a
+driver-owned device suddenly disappear, causing surprise-removal errors. To
+avoid this, remove the PCIe subtree cleanly first using the helper script:
+
+```bash
+qm stop 103 && egpu-remove
+# then switch off the DEG1 ATX PSU
+```
+
+`egpu-remove` is installed at `/usr/local/sbin/egpu-remove`. It unbinds the
+drivers and removes all four PCIe devices in the correct order so the kernel
+has no dangling references when power is cut. On return, power on the DEG1
+first (wait 10–30 s for fans), then reboot the Proxmox host — BIOS POST
+trains the link cleanly and VM 103 autostart works normally.
+
+**Installation:**
+
+```bash
+# Save the script to the path below, then:
+chmod +x /var/lib/vz/snippets/cpu-pinning.pl
+qm set 103 --hookscript local:snippets/cpu-pinning.pl
+```
 
 **File: `/var/lib/vz/snippets/cpu-pinning.pl`**
 
@@ -353,55 +425,112 @@ use warnings;
 my $vmid = shift;
 my $phase = shift;
 
-if ($phase eq 'post-start') {
-    # Suche die PID der VM
+# Write a value to a sysfs file. Returns 1 on success, 0 on failure (silent).
+sub sysfs_write {
+    my ($path, $val) = @_;
+    open(my $fh, '>', $path) or return 0;
+    print $fh $val;
+    close($fh);
+    return 1;
+}
+
+if ($phase eq 'pre-start') {
+    if ($vmid == 103) {
+        my $gpu    = '0000:03:00.0';
+        my $bridge = '0000:00:01.2';
+
+        if (!-e "/sys/bus/pci/devices/$gpu") {
+            print "pre-start: $gpu not visible, rescanning $bridge...\n";
+            sysfs_write("/sys/bus/pci/devices/$bridge/rescan", "1");
+            sleep(10);
+        }
+
+        if (!-e "/sys/bus/pci/devices/$gpu") {
+            print "pre-start: ERROR: GPU $gpu not found after rescan. Is the DEG1 powered on?\n";
+            exit 1;
+        }
+
+        # Wake GPU and audio from D3hot (runtime PM suspend) if needed.
+        # This is a no-op if the device is already in D0 (e.g. first start after boot).
+        for my $dev ($gpu, '0000:03:00.1') {
+            if (-e "/sys/bus/pci/devices/$dev/power/runtime_status") {
+                my $status = do { local @ARGV = "/sys/bus/pci/devices/$dev/power/runtime_status"; <> };
+                chomp($status) if $status;
+                if ($status && $status eq 'suspended') {
+                    print "pre-start: waking $dev from D3hot...\n";
+                    sysfs_write("/sys/bus/pci/devices/$dev/power/control", "on");
+                }
+            }
+        }
+        sleep(2);
+
+        print "pre-start: GPU $gpu present. Proceeding with VM start.\n";
+    }
+
+} elsif ($phase eq 'post-start') {
     my $pid = `cat /var/run/qemu-server/$vmid.pid`;
     chomp($pid);
 
     if ($pid) {
-        # Hier definieren wir die Kerne 1 bis 7 (deine physischen Kerne)
         my $mask = "1,2,3,4,5,6,7";
         system("taskset -cp $mask $pid");
-        print "CPU Pinning: VM $vmid an Kerne $mask gebunden (PID $pid).\n";
+        print "CPU Pinning: VM $vmid pinned to cores $mask (PID $pid).\n";
     } else {
-        die "CPU Pinning Fehlgeschlagen: PID für VM $vmid nicht gefunden.\n";
+        die "CPU Pinning failed: PID for VM $vmid not found.\n";
     }
 
 } elsif ($phase eq 'post-stop') {
     if ($vmid == 103) {
-        my $audio = '0000:03:00.1';
-        my $state_file = "/sys/bus/pci/devices/$audio/power_state";
+        # Proxmox does NOT rebind the GPU back to amdgpu after the VM exits —
+        # vfio-pci keeps ownership. vfio-pci has no power management (GPU idles
+        # at ~55 W with no driver). Rebind to native drivers so amdgpu can put
+        # the GPU into D3hot (~14 W) via runtime PM.
 
-        if (-e $state_file) {
-            open(my $fh, '<', $state_file) or die "Cannot read power state: $!";
-            my $state = <$fh>; chomp $state;
-            close($fh);
+        my %target_driver = (
+            '0000:03:00.0' => 'amdgpu',
+            '0000:03:00.1' => 'snd_hda_intel',
+        );
 
-            if ($state ne 'D0') {
-                print "post-stop: $audio is in $state, forcing re-enumeration...\n";
-                system("echo 1 > /sys/bus/pci/devices/$audio/remove");
-                sleep(2);
-                system("echo 1 > /sys/bus/pci/devices/0000:02:00.0/rescan");
-                sleep(2);
-                print "post-stop: re-enumeration complete.\n";
-            } else {
-                print "post-stop: $audio already at D0, no action needed.\n";
+        for my $dev (sort keys %target_driver) {
+            my $drv = $target_driver{$dev};
+
+            my $cur = readlink("/sys/bus/pci/devices/$dev/driver") // '';
+            $cur = (split '/', $cur)[-1] // '';
+            if ($cur) {
+                print "post-stop: unbinding $dev from $cur\n";
+                sysfs_write("/sys/bus/pci/drivers/$cur/unbind", $dev);
+                sleep(1);
             }
+
+            print "post-stop: binding $dev to $drv\n";
+            if (!sysfs_write("/sys/bus/pci/drivers/$drv/bind", $dev)) {
+                my $vendor_device = do {
+                    open(my $f, '<', "/sys/bus/pci/devices/$dev/vendor") or next;
+                    my $v = <$f>; chomp $v; $v =~ s/^0x//;
+                    open($f, '<', "/sys/bus/pci/devices/$dev/device") or next;
+                    my $d = <$f>; chomp $d; $d =~ s/^0x//;
+                    "$v $d"
+                };
+                sysfs_write("/sys/bus/pci/drivers/$drv/new_id", $vendor_device);
+                sysfs_write("/sys/bus/pci/drivers/$drv/bind", $dev);
+            }
+        }
+
+        # Wait for amdgpu to finish initialising before enabling runtime PM.
+        sleep(5);
+
+        for my $dev ('0000:03:00.0', '0000:03:00.1') {
+            next unless -e "/sys/bus/pci/devices/$dev";
+            # D3cold is not available on this PCIe topology (no ACPI power
+            # resource for the OcuLink slot), so suspended = D3hot by default.
+            sysfs_write("/sys/bus/pci/devices/$dev/power/autosuspend_delay_ms", "2000");
+            sysfs_write("/sys/bus/pci/devices/$dev/power/control", "auto");
+            print "post-stop: runtime PM enabled for $dev — will enter D3hot in 2s\n";
         }
     }
 }
 
 exit 0;
-```
-
-The `post-stop` block is scoped to VM 103 because the PCIe remove/rescan is
-specific to the RX 7900 XTX audio companion. The `post-start` CPU pinning
-block intentionally has no VM ID check — it applies to any VM that uses this
-hook script.
-
-This script is referenced in the VM config as:
-```
-hookscript: local:snippets/cpu-pinning.pl
 ```
 
 ### Step 7: Verify After Reboot
@@ -430,14 +559,22 @@ a memory isolation boundary). For this setup:
 
 | IOMMU Group | Device | Description |
 |---|---|---|
+| 1  | `00:01.2` | AMD Phoenix GPP Bridge — U93/OcuLink root port (rescan target for power-on) |
+| 13 | `01:00.0` `[1002:1478]` | Navi 10 XL PCIe Switch — Upstream Port |
+| 14 | `02:00.0` `[1002:1479]` | Navi 10 XL PCIe Switch — Downstream Port |
 | 15 | `03:00.0` `[1002:744c]` | RX 7900 XTX GPU |
 | 16 | `03:00.1` `[1002:ab30]` | RX 7900 XTX Audio |
-| 14 | `c6:00.0` `[1002:15bf]` | iGPU (stays with host) |
+| 19 | `c6:00.0` `[1002:15bf]` | iGPU (stays with host) |
 
-The GPU and its audio are in separate IOMMU groups. Despite this, both devices
-**must** be passed through together — see the note in Step 5. The separate
-groups are useful for isolation purposes but do not mean the audio device can
-be omitted from the VM config.
+The GPU subtree is rooted at `00:01.2` (the AMD Phoenix GPP Bridge serving the U93 M.2 slot). The
+Navi 10 XL PCIe switch inside the card adds two additional devices (`01:00.0`, `02:00.0`) between
+the root port and the actual GPU. If the GPU is not detected at pre-start (e.g. Proxmox was rebooted
+while the DEG1 was off), the hook rescans `00:01.2` specifically:
+```bash
+echo 1 > /sys/bus/pci/devices/0000:00:01.2/rescan
+```
+
+The GPU and its audio are in separate IOMMU groups. Despite this, both devices must be passed through together — see the note in Step 5.
 
 ---
 
@@ -482,13 +619,23 @@ Fix:
 Symptom: `lspci` inside the guest shows no AMD GPU, only the emulated VGA
 (`1234:1111`).
 
-Cause: The VM was started while `03:00.0` or `03:00.1` was stuck in D3hot/D3cold
-from a previous unclean shutdown. QEMU reported `TASK OK` but handed a
-powered-down device to the guest.
+Cause: The VM was started while `03:00.0` or `03:00.1` was in a power state
+the guest driver could not recover from.
 
-Fix: A full host reboot is required to power-cycle the OcuLink link and bring
-the GPU back to D0. The post-stop hook (Step 6) prevents this from recurring
-after normal shutdowns.
+Fix: Stop the VM (`qm stop 103`), then check the GPU driver on the host:
+```bash
+readlink /sys/bus/pci/devices/0000:03:00.0/driver | xargs basename
+```
+If it shows `amdgpu`, the post-stop hook ran correctly — just start the VM
+again. If it still shows `vfio-pci`, rebind manually:
+```bash
+echo "0000:03:00.1" > /sys/bus/pci/drivers/vfio-pci/unbind
+echo "0000:03:00.0" > /sys/bus/pci/drivers/vfio-pci/unbind
+echo "0000:03:00.0" > /sys/bus/pci/drivers/amdgpu/bind
+echo "0000:03:00.1" > /sys/bus/pci/drivers/snd_hda_intel/bind
+```
+Then start the VM. If the GPU is entirely absent from `lspci`, a full host
+reboot is required (the PCIe link cannot be retrained without BIOS POST).
 
 ### VM fails to start after adding hostpci lines
 
@@ -516,3 +663,4 @@ may leave the process in `internal-error` state.
 - STH DEG1 review: https://www.servethehome.com/minisforum-deg1-oculink-egpu-dock-quick-look-amd-nvidia/
 - Reddit confirmation (identical hardware): https://old.reddit.com/r/eGPU/comments/1j0yzeo/
 - Proxmox PCI passthrough documentation: https://pve.proxmox.com/wiki/PCI_Passthrough
+
